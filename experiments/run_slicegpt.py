@@ -6,21 +6,40 @@ import logging
 import os
 import pathlib
 import shutil
+import yaml
 
 import torch
 import wandb
+
+
+# Add parent paths
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import src
 
 from slicegpt import data_utils, gpu_utils, hf_utils, layernorm_fusion, rotate, utils
 from slicegpt.config import config
 from slicegpt.slicing_scheduler import ConstSlicingScheduler
 
-
+def set_args(cfg_path):
+    
+    with open(cfg_path, 'r') as file:
+        cfgs = yaml.safe_load(file)
+    
+    args = argparse.Namespace()
+    for c in cfgs:
+        setattr(args, c.replace("-","_"), cfgs[c])
+    return args
+    
+    
 def slicing_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+
     parser.add_argument(
         "--model",
         type=str,
-        default="facebook/opt-125m",
+        default="meta-llama/Meta-Llama-3-70B-Instruct",
         help="Model to load",
     )
     path_group = parser.add_mutually_exclusive_group()
@@ -93,7 +112,7 @@ def slicing_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument('--hf-token', type=str, default=os.getenv('HF_TOKEN', None))
 
     parser.add_argument('--wandb-project', type=str, default="slicegpt", help="wandb project name.")
-    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.")
+    parser.add_argument('--no-wandb', action="store_true", help="Disable wandb.", default=True)
     parser.add_argument(
         '--device',
         type=str,
@@ -269,6 +288,9 @@ if __name__ == "__main__":
     utils.configure_logging(log_to_console=True, log_to_file=False, level=logging.INFO)
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
-    slicing_args = slicing_arg_parser()
+    # slicing_args = slicing_arg_parser()
+    slicing_args = set_args(cfg_path="configs/llama.yaml")
+    
     process_slicing_args(slicing_args)
+    
     slicing_main(slicing_args)
