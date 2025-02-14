@@ -1,6 +1,5 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
-
 import argparse
 import logging
 import os
@@ -39,7 +38,7 @@ def slicing_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="meta-llama/Meta-Llama-3-70B-Instruct",
+        default="meta-llama/Meta-Llama-3-8B-Instruct",
         help="Model to load",
     )
     path_group = parser.add_mutually_exclusive_group()
@@ -284,13 +283,13 @@ def slicing_main(args: argparse.Namespace) -> None:
     logging.info(f'Sliced model parameters: {sliced_param_count:,d} (sliced fraction {sliced_fraction:.4f})')
 
 
-if __name__ == "__main__":
+def run_slicegpt():
     utils.configure_logging(log_to_console=True, log_to_file=False, level=logging.INFO)
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     # slicing_args = slicing_arg_parser()
     slicing_args = set_args(cfg_path="configs/llama.yaml")
-    
+
     process_slicing_args(slicing_args)
-    
+
     slicing_main(slicing_args)

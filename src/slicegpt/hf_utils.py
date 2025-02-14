@@ -8,6 +8,7 @@ from typing import Any
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from . import LlamaModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model

@@ -336,11 +336,15 @@ class ModelAdapter(ABC):
             """
             Recursively search for a subclass that can handle the model.
             """
+            
+            
             # depth first search to find the most specific subclass that can handle the model
             for subclass in adapter_cls.__subclasses__():
                 candidate = find_recursively(subclass)
                 if candidate is not None:
                     return candidate
+                
+
 
             if inspect.isabstract(adapter_cls):
                 return None
