@@ -11,6 +11,7 @@ from torch import FloatTensor, LongTensor, Tensor, matmul
 from torch.nn import Linear, Module
 from transformers import PretrainedConfig, PreTrainedTokenizerBase
 from transformers.models.llama.modeling_llama import LlamaConfig, LlamaDecoderLayer, LlamaForCausalLM, LlamaRMSNorm
+from typing import Optional, Tuple
 
 from slicegpt.model_adapter import LayerAdapter, ModelAdapter
 
@@ -24,15 +25,18 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Tensor | None = None,
-        position_ids: LongTensor | None = None,
-        past_key_value: tuple[Tensor] | None = None,
-        output_attentions: bool | None = False,
-        use_cache: bool | None = False,
-        **kwargs,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs
     ) -> tuple:
         """
+        (Copy from https://github.com/microsoft/TransformerCompression/blob/main/src/slicegpt/adapters/llama_adapter.py#L43C13-L43C22)
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`
             attention_mask (`torch.FloatTensor`, *optional*): attention mask of size
@@ -44,6 +48,10 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
                 (see `past_key_values`).
             past_key_value (`tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+
+        Note (mercy):
+            Replaced them with the current Llama implementation (16 Feb. 2025).
+            https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L319
         """
 
         residual = hidden_states
@@ -51,15 +59,19 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+
+        # hidden_states, self_attn_weights, present_key_value = self.self_attn(
+        hidden_states, self_attn_weights  = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            position_embeddings = position_embeddings,
             **kwargs,
         )
+
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
             hidden_states = rotated_residual + hidden_states
