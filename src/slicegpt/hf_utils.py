@@ -8,7 +8,7 @@ from typing import Any
 import torch
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-from . import LlamaModelAdapter
+from . import LlamaModelAdapter, Phi2ModelAdapter, Phi3ModelAdapter
 from .layernorm_fusion import fuse_modules, replace_layers
 from .model_adapter import ModelAdapter, SlicingConfig
 from .rotate import slice_rotated_model
@@ -89,14 +89,42 @@ def get_model_and_tokenizer(
         model_path if local_model else 'Hugging Face',
     )
 
-    model_adapter = ModelAdapter.from_model(
-        model_name,
-        model_path=model_path,
-        model_type=model_type,
-        dtype=dtype,
-        local_files_only=local_model,
-        token=token,
-    )
+    if "llama" in model_name.lower()+model_path.lower():
+        model_adapter = LlamaModelAdapter.from_model(
+            model_name,
+            model_path=model_path,
+            model_type=model_type,
+            dtype=dtype,
+            local_files_only=local_model,
+            token=token,
+        )
+    elif "phi-2" in model_name.lower()+model_path.lower():
+        model_adapter = Phi2ModelAdapter.from_model(
+            model_name,
+            model_path=model_path,
+            model_type=model_type,
+            dtype=dtype,
+            local_files_only=local_model,
+            token=token,
+        )
+    elif "phi" in model_name.lower()+model_path.lower():
+        model_adapter = Phi3ModelAdapter.from_model(
+            model_name,
+            model_path=model_path,
+            model_type=model_type,
+            dtype=dtype,
+            local_files_only=local_model,
+            token=token,
+        )
+    else:
+        model_adapter = ModelAdapter.from_model(
+            model_name,
+            model_path=model_path,
+            model_type=model_type,
+            dtype=dtype,
+            local_files_only=local_model,
+            token=token,
+        )
 
     model = model_adapter.model
     model.seqlen = model.config.max_position_embeddings
@@ -114,6 +142,7 @@ def get_model_and_tokenizer(
 @do_not_initialize
 def load_sliced_model(
     model_name: str,
+    model_path: str,
     sliced_model_path: str,
     *,
     token: str | None = None,
@@ -134,8 +163,8 @@ def load_sliced_model(
 
     model_adapter, tokenizer = get_model_and_tokenizer(
         model_name,
-        model_path=sliced_model_path,
-        uninitialized=True,
+        model_path= model_path, #sliced_model_path,
+        uninitialized=False,
         token=token,
     )
     replace_layers(model_adapter)

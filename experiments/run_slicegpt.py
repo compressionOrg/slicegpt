@@ -40,7 +40,7 @@ def slicing_arg_parser(interactive: bool = True) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="meta-llama/Meta-Llama-3-8B-Instruct",
+        default=None,
         help="Model to load",
     )
     path_group = parser.add_mutually_exclusive_group()
@@ -163,8 +163,11 @@ def prepare_slicing(args: argparse.Namespace) -> None:
 
     if args.sliced_model_path:
         # load the model from sliced_model_path to compute perplexity and skip rotation and slicing
+
+        sliced_model_dir, sliced_model_name, config_path = gen_sliced_load_path(args)
         model_adapter, tokenizer = hf_utils.load_sliced_model(
             args.model,
+            args.model_path,
             args.sliced_model_path,
             sparsity=args.sparsity,
             round_interval=args.round_interval,
@@ -213,6 +216,15 @@ def prepare_slicing(args: argparse.Namespace) -> None:
         utils.cleanup_memory()
 
     return (model_adapter, model, train_loader, test_loader)
+
+def gen_sliced_load_path(args):
+    sliced_model_dir = pathlib.Path(args.save_dir)
+    sliced_model_dir.mkdir(parents=True, exist_ok=True)
+
+    sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
+    config_path = sliced_model_name.with_suffix('.json')
+
+    return sliced_model_dir, sliced_model_name, config_path
 
 def save_models(args, kwargs):
     model, model_adapter = kwargs
@@ -310,12 +322,18 @@ def run_slicegpt():
 
     process_slicing_args(slicing_args)
 
+
     for s in [0.1,0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
+        # 1. Slicing
+        # slicing_args.sparsity = s
+        # kwargs = prepare_slicing(slicing_args)
+        # print(f"\n\n\nSparsity:\t{s}")
+        # slicing_main(slicing_args, kwargs)
+
+        # 2. Evaluate Only
         slicing_args.sparsity = s
-        kwargs = prepare_slicing(slicing_args)
-        slicing_args.eval_baseline = False
-
         print(f"\n\n\nSparsity:\t{s}")
+        kwargs = prepare_slicing(slicing_args)
 
-        slicing_main(slicing_args, kwargs)
+
 
