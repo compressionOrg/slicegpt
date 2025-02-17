@@ -39,6 +39,7 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> Tuple[Any]:
         if "padding_mask" in kwargs:
@@ -69,14 +70,18 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        attn_outputs, self_attn_weights, present_key_value = self.self_attn(
+        # attn_outputs, self_attn_weights, present_key_value = self.self_attn(
+        attn_outputs, self_attn_weights = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            position_embeddings=position_embeddings,
         )
+
+
 
         if self.attn_shortcut_Q is not None:
             rotated_residual = matmul(residual, self.attn_shortcut_Q)
@@ -98,9 +103,6 @@ class CompressedPhi3DecoderLayer(Phi3DecoderLayer):
 
         if output_attentions:
             outputs += (self_attn_weights,)
-
-        if use_cache:
-            outputs += (present_key_value,)
 
         return outputs
 
@@ -237,7 +239,8 @@ class Phi3ModelAdapter(ModelAdapter):
         local_files_only: bool = False,
         token: str | bool | None = None,
     ) -> ModelAdapter | None:
-        if not model_name.startswith("microsoft/Phi-3-mini-4k-instruct"):
+        # Note (mercy): Relax LLM versions from ""microsoft/Phi-3-mini-4k-instruct"
+        if not (model_name.startswith("microsoft/Phi-3") or model_name.startswith("microsoft/phi-4")):
             return None
 
         model = Phi3ForCausalLM.from_pretrained(

@@ -94,8 +94,6 @@ class CompressedLlamaDecoderLayer(LlamaDecoderLayer):
         if output_attentions:
             outputs += (self_attn_weights,)
 
-        if use_cache:
-            outputs += (present_key_value,)
 
         return outputs
 

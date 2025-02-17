@@ -5,6 +5,8 @@ import logging
 import os
 import pathlib
 import shutil
+from typing import Tuple
+
 import yaml
 
 import torch
@@ -139,11 +141,17 @@ def process_slicing_args(args):
     else:
         raise argparse.ArgumentTypeError(f"Data type should be one of 'fp16', 'fp32'")
 
+def reset_model_device(args, model, model_adapter) -> None:
+    if args.distribute_model:
+        # distribute model across available GPUs
+        gpu_utils.distribute_model(model_adapter)
+    else:
+        model.to(config.device)
 
-def slicing_main(args: argparse.Namespace) -> None:
-    logging.info("Running SliceGPT experiment.")
+def prepare_slicing(args: argparse.Namespace) -> None:
+    # logging.info("Running SliceGPT experiment.")
     logging.info(f"PyTorch device: {config.device}")
-    logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
+    # logging.info(f"Number of available cuda devices: {torch.cuda.device_count()}")
 
     try:
         wandb.init(project=args.wandb_project, config=args, mode='disabled' if args.no_wandb else None)
@@ -170,12 +178,7 @@ def slicing_main(args: argparse.Namespace) -> None:
 
     model = model_adapter.model
 
-    def reset_model_device() -> None:
-        if args.distribute_model:
-            # distribute model across available GPUs
-            gpu_utils.distribute_model(model_adapter)
-        else:
-            model.to(config.device)
+
 
     dataset = data_utils.get_dataset(args.cal_dataset)
     train_dataset, test_dataset = dataset["train"], dataset["test"]
@@ -194,7 +197,7 @@ def slicing_main(args: argparse.Namespace) -> None:
 
     # evaluate perplexity and exit if sliced model is loaded or if ppl_only is set
     if args.sliced_model_path or args.ppl_only:
-        reset_model_device()
+        reset_model_device(args, model, model_adapter)
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Loaded model perplexity: {dataset_ppl}')
         wandb.log({"original_ppl": dataset_ppl})
@@ -202,13 +205,62 @@ def slicing_main(args: argparse.Namespace) -> None:
 
     # original ppl
     if args.eval_baseline:
-        reset_model_device()
+        reset_model_device(args, model, model_adapter)
         dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
         logging.info(f'Original ppl: {dataset_ppl:.4f}')
         wandb.log({"original_ppl": dataset_ppl})
         model.cpu()
         utils.cleanup_memory()
 
+    return (model_adapter, model, train_loader, test_loader)
+
+def save_models(args, kwargs):
+    model, model_adapter = kwargs
+
+    sliced_model_dir = pathlib.Path(args.save_dir)
+    sliced_model_dir.mkdir(parents=True, exist_ok=True)
+
+    sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
+
+    # Save the sliced model
+    torch.save(model.state_dict(), sliced_model_name)
+
+    # Save the slicing config
+    config_path = sliced_model_name.with_suffix('.json')
+    config_path.write_text(model_adapter.slicing_conf.to_json_string())
+
+    # If slicing a local model, also save HF config files in sliced model dir
+    if args.model_path:
+        try:
+            # copy all config files (tokenizer, model and slicing configs)
+            for file in pathlib.Path(args.model_path).glob("*.json"):
+                if 'safetensors' not in str(file):
+                    shutil.copy(str(file), sliced_model_dir)
+            # copy all tokenizer models
+            for file in pathlib.Path(args.model_path).glob("*token*.model"):
+                shutil.copy(str(file), sliced_model_dir)
+            # copy vocab merges if any
+            for file in pathlib.Path(args.model_path).glob("merges.txt"):
+                shutil.copy(str(file), sliced_model_dir)
+        except OSError as e:
+            logging.info(f'Failed to copy configs and tokenizer files: {e}')
+
+    logging.info(f"Saved sliced model to {args.save_dir}")
+
+def post_slicing(args, kwargs):
+    model, model_adapter, test_loader, original_param_count = kwargs
+
+    reset_model_device(args, model, model_adapter)
+    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
+    logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
+    wandb.log({"sliced_ppl": dataset_ppl})
+
+    sliced_param_count = sum(int(p.nelement()) for p in model.parameters())
+    sliced_fraction = 1.0 - sliced_param_count / original_param_count
+    logging.info(f'Sliced model parameters: {sliced_param_count:,d} (sliced fraction {sliced_fraction:.4f})')
+
+def slicing_main(args: argparse.Namespace, kwargs: Tuple) -> None:
+    model_adapter, model, train_loader, test_loader = kwargs
     # replace modules with compressible equivalents
     layernorm_fusion.replace_layers(model_adapter)
 
@@ -240,47 +292,13 @@ def slicing_main(args: argparse.Namespace) -> None:
     )
 
     scheduler = ConstSlicingScheduler(new_embedding_dimension)
+    model.cpu()
     rotate.rotate_and_slice(model_adapter, train_loader, scheduler, final_orientation=args.final_orientation)
 
     if args.save_dir:
-        sliced_model_dir = pathlib.Path(args.save_dir)
-        sliced_model_dir.mkdir(parents=True, exist_ok=True)
+        save_models(args=args, kwargs=(model, model_adapter))
 
-        sliced_model_name = sliced_model_dir / f'{pathlib.Path(args.model).name}_{args.sparsity}.pt'
-
-        # Save the sliced model
-        torch.save(model.state_dict(), sliced_model_name)
-
-        # Save the slicing config
-        config_path = sliced_model_name.with_suffix('.json')
-        config_path.write_text(model_adapter.slicing_conf.to_json_string())
-
-        # If slicing a local model, also save HF config files in sliced model dir
-        if args.model_path:
-            try:
-                # copy all config files (tokenizer, model and slicing configs)
-                for file in pathlib.Path(args.model_path).glob("*.json"):
-                    if 'safetensors' not in str(file):
-                        shutil.copy(str(file), sliced_model_dir)
-                # copy all tokenizer models
-                for file in pathlib.Path(args.model_path).glob("*token*.model"):
-                    shutil.copy(str(file), sliced_model_dir)
-                # copy vocab merges if any
-                for file in pathlib.Path(args.model_path).glob("merges.txt"):
-                    shutil.copy(str(file), sliced_model_dir)
-            except OSError as e:
-                logging.info(f'Failed to copy configs and tokenizer files: {e}')
-
-        logging.info(f"Saved sliced model to {args.save_dir}")
-
-    reset_model_device()
-    dataset_ppl = gpu_utils.evaluate_ppl(model, model.config.pad_token_id, test_loader)
-    logging.info(f'After rotating and slicing {dataset_ppl:.4f}')
-    wandb.log({"sliced_ppl": dataset_ppl})
-
-    sliced_param_count = sum(int(p.nelement()) for p in model.parameters())
-    sliced_fraction = 1.0 - sliced_param_count / original_param_count
-    logging.info(f'Sliced model parameters: {sliced_param_count:,d} (sliced fraction {sliced_fraction:.4f})')
+    post_slicing(args=args, kwargs=(model, model_adapter, test_loader, original_param_count))
 
 
 def run_slicegpt():
@@ -292,4 +310,12 @@ def run_slicegpt():
 
     process_slicing_args(slicing_args)
 
-    slicing_main(slicing_args)
+    for s in [0.1,0.15, 0.2, 0.25, 0.3, 0.4, 0.5]:
+        slicing_args.sparsity = s
+        kwargs = prepare_slicing(slicing_args)
+        slicing_args.eval_baseline = False
+
+        print(f"\n\n\nSparsity:\t{s}")
+
+        slicing_main(slicing_args, kwargs)
+
