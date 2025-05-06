@@ -1,1 +1,1 @@
-{"arc_challenge": 0.3737, "arc_easy": 0.6402, "hellaswag": 0.5925, "piqa": 0.6899, "winogrande": 0.663, "average": 0.5918}
+{"arc_challenge": 0.256, "arc_easy": 0.5442, "boolq": 0.3875, "hellaswag": 0.3839, "mathqa": 0.2369, "openbookqa": 0.228, "piqa": 0.6409, "winogrande": 0.6148, "average": 0.4115}

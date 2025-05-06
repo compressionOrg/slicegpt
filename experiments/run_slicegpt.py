@@ -266,7 +266,7 @@ def slicing_main(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    utils.configure_logging(log_to_console=True, log_to_file=False, level=logging.INFO)
+    utils.configure_logging(log_to_console=True, log_to_file=True, level=logging.INFO)
     os.environ["WANDB__SERVICE_WAIT"] = "300"
 
     slicing_args = slicing_arg_parser()
