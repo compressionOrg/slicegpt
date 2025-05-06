@@ -29,11 +29,14 @@ TASK_METRIC_MAP = {
     "mmlu_miscellaneous": "acc,none",
     "mmlu_philosophy": "acc,none",
     "mmlu_global_facts": "acc,none",
-    "arc_challenge": "acc_norm,none",
-    "arc_easy": "acc_norm,none",
-    "hellaswag": "acc_norm,none",
-    "piqa": "acc_norm,none",
+    "arc_challenge": "acc,none",
+    "arc_easy": "acc,none",
+    "hellaswag": "acc,none",
+    "piqa": "acc,none",
     "winogrande": "acc,none",
+    "boolq": "acc,none",
+    "openbookqa": "acc,none",
+    "mathqa": "acc,none",
 }
 
 
