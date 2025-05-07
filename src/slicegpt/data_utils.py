@@ -80,8 +80,15 @@ def prepare_test_dataloader(
     class TestDataset(Dataset):
         def __init__(self, ds, tokenizer, seqlen=2048):
             """Tokenize the entire dataset and reshape it into sequences of length seqlen."""
-
-            tokenized_ds = tokenizer("\n\n".join(ds['text']), return_tensors='pt')
+            if 'text' in ds.column_names:
+                text_field = 'text'
+                join_char = "\n\n"
+            elif 'sentence' in ds.column_names:
+                text_field = 'sentence'
+                join_char = " "
+            else:
+                raise ValueError(f"数据集中既没有'text'也没有'sentence'字段。可用字段: {ds.column_names}")
+            tokenized_ds = tokenizer(join_char.join(ds[text_field]), return_tensors='pt')
             nsamples = tokenized_ds.input_ids.numel() // seqlen
 
             input_ids = tokenized_ds.input_ids[0, : nsamples * seqlen]

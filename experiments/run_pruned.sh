@@ -1,9 +1,12 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=2
 
 # /bin/bash run_slicegpt.sh "meta-llama/Llama-2-7b-hf" 0.2
-/bin/bash run_lm_eval.sh "meta-llama/Llama-2-7b-hf" 0.2
+# /bin/bash run_lm_eval.sh "meta-llama/Llama-2-7b-hf" 0.2
+
+/bin/bash run_slicegpt.sh "meta-llama/Llama-2-13b-hf" 0.2
+/bin/bash run_lm_eval.sh "meta-llama/Llama-2-13b-hf" 0.2
 
 # /bin/bash run_slicegpt.sh "meta-llama/Llama-3.1-8B" 0.2
 # /bin/bash run_lm_eval.sh "meta-llama/Llama-3.1-8B" 0.2
